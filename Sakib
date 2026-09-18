@@ -1,0 +1,66 @@
+import time
+import requests
+from bs4 import BeautifulSoup
+import re
+
+# টেলিগ্রাম বটের তথ্য
+TOKEN = '8998884738'
+CHAT_ID = '8732886596'
+
+# ট্র্যাক করার লিংক
+URL = "https://questure.poliziadistato.it/servizio/stranieri?lang=italian&mime=&pratica=26CH005305&invia=Invia"
+
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        return response.json()
+    except Exception as e:
+        print(f"Error sending message: {e}")
+
+def check_status():
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = requests.get(URL, headers=headers)
+        
+        if response.status_code == 200:
+            html_content = response.text
+            
+            # পেজ থেকে বর্তমান স্ট্যাটাস টেক্সট খোঁজা
+            # ইতালিয়ান সাইটে স্ট্যাটাস সাধারণত 'in trattazione' বা অন্য কিছু থাকতে পারে
+            if "in trattazione" in html_content.lower():
+                return "In Trattazione (প্রক্রিয়াধীন আছে)"
+            elif "pronto" in html_content.lower() or "consegnato" in html_content.lower():
+                return "Pronto / প্রস্তুত হয়েছে! (সবুজ টিক মার্ক আসার সম্ভাবনা)"
+            else:
+                return "অন্যান্য অবস্থা বা পরিবর্তন হয়েছে"
+        else:
+            return "Connection Error"
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+# লুপ যা প্রতি ৩ বা ৪ ঘণ্টা পরপর চেক করবে
+last_status = ""
+
+print("Permesso Tracker Bot started...")
+
+while True:
+    current_status = check_status()
+    print(f"Checked at {time.strftime('%Y-%m-%d %H:%M:%S')} - Status: {current_status}")
+    
+    # যদি স্ট্যাটাস আগের চেয়ে পরিবর্তিত হয়, তবে টেলিগ্রামে মেসেজ পাঠাবে
+    if current_status != last_status:
+        message = f"🚨 *Permesso Status Update!*\n\nবর্তমান অবস্থা: `{current_status}`\n\nলিংক: [Link]({URL})"
+        send_telegram_message(message)
+        last_status = current_status
+        
+    # প্রতি ৪ ঘণ্টা পর পর চেক করবে (সেকেন্ড হিসেবে হিসাব, যেমন: 4 * 3600 = 14400 সেকেন্ড)
+    time.sleep(14400)
